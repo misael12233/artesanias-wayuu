@@ -12,6 +12,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -34,6 +35,8 @@ const initialForm: ArtesaniaPayload = {
 };
 
 export default function CrudScreen() {
+  const { width } = useWindowDimensions();
+  const isNarrowScreen = width < 560;
   const scrollRef = useRef<ScrollView | null>(null);
   const formPanelY = useRef(0);
   const [items, setItems] = useState<Artesania[]>([]);
@@ -470,9 +473,13 @@ export default function CrudScreen() {
           <View style={styles.cardList}>
             {filteredItems.map((item) => (
               <View key={item.id} style={styles.itemCard}>
-                <View style={styles.itemCardContent}>
+                <View
+                  style={[
+                    styles.itemCardContent,
+                    isNarrowScreen && styles.itemCardContentMobile,
+                  ]}>
                   <View style={styles.itemInfoColumn}>
-                    <View style={styles.itemTopRow}>
+                    <View style={[styles.itemTopRow, isNarrowScreen && styles.itemTopRowMobile]}>
                       <View style={styles.itemMetaGroup}>
                         <View style={styles.itemIdBadge}>
                           <Text style={styles.itemIdBadgeText}>ID {item.id}</Text>
@@ -488,12 +495,15 @@ export default function CrudScreen() {
                     <Text style={styles.itemAuthor}>Por {item.artesana}</Text>
 
                     <View style={styles.itemActions}>
-                      <Pressable style={styles.editButton} onPress={() => startEdit(item)}>
+                      <Pressable
+                        style={[styles.editButton, isNarrowScreen && styles.itemActionButtonMobile]}
+                        onPress={() => startEdit(item)}>
                         <Text style={styles.editButtonText}>Editar</Text>
                       </Pressable>
                       <Pressable
                         style={[
                           styles.deleteButton,
+                          isNarrowScreen && styles.itemActionButtonMobile,
                           deletingId === item.id && styles.buttonDisabled,
                         ]}
                         disabled={deletingId === item.id}
@@ -505,18 +515,28 @@ export default function CrudScreen() {
                     </View>
                   </View>
 
-                  <View style={styles.itemImageColumn}>
-                    {item.imagen_url ? (
-                      <Image
-                        source={{ uri: item.imagen_url }}
-                        style={styles.itemImage}
-                        resizeMode="contain"
-                      />
-                    ) : (
-                      <View style={styles.itemImagePlaceholder}>
-                        <Text style={styles.itemImagePlaceholderText}>Sin imagen</Text>
-                      </View>
-                    )}
+                  <View
+                    style={[
+                      styles.itemImageColumn,
+                      isNarrowScreen && styles.itemImageColumnMobile,
+                    ]}>
+                    <View
+                      style={[
+                        styles.itemImageFrame,
+                        isNarrowScreen && styles.itemImageFrameMobile,
+                      ]}>
+                      {item.imagen_url ? (
+                        <Image
+                          source={{ uri: item.imagen_url }}
+                          style={styles.itemImage}
+                          resizeMode="cover"
+                        />
+                      ) : (
+                        <View style={styles.itemImagePlaceholder}>
+                          <Text style={styles.itemImagePlaceholderText}>Sin imagen</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
                 </View>
               </View>
@@ -829,24 +849,33 @@ const styles = StyleSheet.create({
     gap: 14,
     alignItems: 'stretch',
   },
+  itemCardContentMobile: {
+    flexDirection: 'column-reverse',
+  },
   itemInfoColumn: {
     flex: 1,
     gap: 10,
     justifyContent: 'space-between',
+    minWidth: 0,
   },
   itemImageColumn: {
     width: 122,
-    minHeight: 140,
+    flexShrink: 0,
   },
-  itemImagePlaceholder: {
+  itemImageColumnMobile: {
     width: '100%',
-    height: '100%',
-    minHeight: 140,
+  },
+  itemImageFrame: {
+    width: '100%',
+    aspectRatio: 1,
+    minHeight: 122,
     borderRadius: 12,
+    overflow: 'hidden',
     backgroundColor: '#EAD7BC',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
+  },
+  itemImageFrameMobile: {
+    aspectRatio: 4 / 3,
+    minHeight: 180,
   },
   itemImagePlaceholderText: {
     color: '#7B624A',
@@ -855,15 +884,24 @@ const styles = StyleSheet.create({
   itemImage: {
     width: '100%',
     height: '100%',
-    minHeight: 140,
-    borderRadius: 12,
     backgroundColor: '#FFF4E1',
+  },
+  itemImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
   },
   itemTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
+  },
+  itemTopRowMobile: {
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
   },
   itemMetaGroup: {
     flexDirection: 'row',
@@ -912,6 +950,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 4,
+  },
+  itemActionButtonMobile: {
+    minHeight: 44,
   },
   editButton: {
     flex: 1,
