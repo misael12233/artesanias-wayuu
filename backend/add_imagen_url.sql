@@ -1,0 +1,2 @@
+ALTER TABLE artesanias_wayuu
+ADD COLUMN imagen_url VARCHAR(255) DEFAULT NULL;

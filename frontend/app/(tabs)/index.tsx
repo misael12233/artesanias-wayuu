@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  LayoutChangeEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -15,19 +18,28 @@ import {
 import { API_BASE_URL } from '@/constants/api';
 import type { Artesania, ArtesaniaPayload } from '@/types/artesania';
 
+type SelectedImage = {
+  uri: string;
+  name: string;
+  mimeType: string;
+  file?: File;
+};
+
 const initialForm: ArtesaniaPayload = {
   nombre: '',
   artesana: '',
   precio: '',
   categoria: '',
+  imagen_url: '',
 };
 
-// const categories = ['Mochilas', 'Accesorios', 'Hogar', 'Ropa', 'Calzado'];
-
 export default function CrudScreen() {
+  const scrollRef = useRef<ScrollView | null>(null);
+  const formPanelY = useRef(0);
   const [items, setItems] = useState<Artesania[]>([]);
   const [form, setForm] = useState<ArtesaniaPayload>(initialForm);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [selectedImage, setSelectedImage] = useState<SelectedImage | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -48,27 +60,34 @@ export default function CrudScreen() {
       )
     );
   }, [items, query]);
+
   const categories = useMemo(() => {
-  const unique = new Set(items.map(item => item.categoria));
+    const unique = new Set(items.map((item) => item.categoria));
 
-  if (form.categoria.trim()) {
-    unique.add(form.categoria.trim());
-  }
+    if (form.categoria.trim()) {
+      unique.add(form.categoria.trim());
+    }
 
-  return Array.from(unique);
-}, [items, form.categoria]);
+    return Array.from(unique);
+  }, [items, form.categoria]);
 
   const totalValue = useMemo(
     () => items.reduce((acc, item) => acc + Number(item.precio), 0),
     [items]
   );
 
+  const previewImage = selectedImage?.uri || form.imagen_url || '';
+
   async function request<T>(path: string, options?: RequestInit): Promise<T> {
+    const isFormData = options?.body instanceof FormData;
     const response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
       ...options,
+      headers: isFormData
+        ? options?.headers
+        : {
+            'Content-Type': 'application/json',
+            ...options?.headers,
+          },
     });
 
     const data = await response.json().catch(() => null);
@@ -101,7 +120,7 @@ export default function CrudScreen() {
 
   useEffect(() => {
     loadItems();
-  }, []);
+  }, [loadItems]);
 
   function updateField(field: keyof ArtesaniaPayload, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -110,16 +129,31 @@ export default function CrudScreen() {
   function resetForm() {
     setForm(initialForm);
     setEditingId(null);
+    setSelectedImage(null);
+  }
+
+  function handleFormPanelLayout(event: LayoutChangeEvent) {
+    formPanelY.current = event.nativeEvent.layout.y;
+  }
+
+  function scrollToForm() {
+    scrollRef.current?.scrollTo({
+      y: Math.max(formPanelY.current - 16, 0),
+      animated: true,
+    });
   }
 
   function startEdit(item: Artesania) {
     setEditingId(item.id);
+    setSelectedImage(null);
     setForm({
       nombre: item.nombre,
       artesana: item.artesana,
       precio: String(item.precio),
       categoria: item.categoria,
+      imagen_url: item.imagen_url || '',
     });
+    scrollToForm();
   }
 
   function validateForm() {
@@ -138,6 +172,10 @@ export default function CrudScreen() {
       throw new Error('El precio debe ser un numero mayor que cero');
     }
 
+    if (!editingId && !selectedImage) {
+      throw new Error('Debes subir una imagen para crear el producto');
+    }
+
     return {
       nombre: form.nombre.trim(),
       artesana: form.artesana.trim(),
@@ -146,18 +184,77 @@ export default function CrudScreen() {
     };
   }
 
+  async function pickImage() {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        throw new Error('Debes conceder permiso para acceder a tus imagenes');
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.85,
+      });
+
+      if (result.canceled || !result.assets?.length) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setSelectedImage({
+        uri: asset.uri,
+        name: asset.fileName || `artesania-${Date.now()}.jpg`,
+        mimeType: asset.mimeType || 'image/jpeg',
+        file: asset.file,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo seleccionar la imagen');
+    }
+  }
+
+  function buildFormData(payload: {
+    nombre: string;
+    artesana: string;
+    precio: number;
+    categoria: string;
+  }) {
+    const data = new FormData();
+    data.append('nombre', payload.nombre);
+    data.append('artesana', payload.artesana);
+    data.append('precio', String(payload.precio));
+    data.append('categoria', payload.categoria);
+
+    if (selectedImage) {
+      if (Platform.OS === 'web' && selectedImage.file) {
+        data.append('imagen', selectedImage.file, selectedImage.name);
+      } else {
+        data.append('imagen', {
+          uri: selectedImage.uri,
+          name: selectedImage.name,
+          type: selectedImage.mimeType,
+        } as never);
+      }
+    }
+
+    return data;
+  }
+
   async function submitForm() {
     try {
       setSubmitting(true);
       setError('');
       const payload = validateForm();
+      const body = buildFormData(payload);
 
       if (editingId) {
         const response = await request<{ artesania: Artesania }>(
           `/artesanias-wayuu/${editingId}`,
           {
             method: 'PUT',
-            body: JSON.stringify(payload),
+            body,
           }
         );
 
@@ -167,7 +264,7 @@ export default function CrudScreen() {
       } else {
         const response = await request<{ artesania: Artesania }>('/artesanias-wayuu', {
           method: 'POST',
-          body: JSON.stringify(payload),
+          body,
         });
 
         setItems((current) => [response.artesania, ...current]);
@@ -215,14 +312,19 @@ export default function CrudScreen() {
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.screen}
       contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => loadItems(true)} tintColor="#B66A2C" />
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => loadItems(true)}
+          tintColor="#B66A2C"
+        />
       }>
       <View style={styles.hero}>
         <Text style={styles.kicker}>ARTESANIAS WAYUU</Text>
-        <Text style={styles.title}>Los mejores productos artesanales wayuu.</Text>
+        <Text style={styles.title}>Crea y edita productos con imagen incluida.</Text>
         <Text style={styles.subtitle}>
           API conectada a <Text style={styles.inlineStrong}>{API_BASE_URL}</Text>
         </Text>
@@ -234,7 +336,7 @@ export default function CrudScreen() {
         <StatCard label="Valor total" value={formatCurrency(totalValue)} />
       </View>
 
-      <View style={styles.panel}>
+      <View style={styles.panel} onLayout={handleFormPanelLayout}>
         <Text style={styles.panelTitle}>
           {editingId ? 'Editar artesania' : 'Nueva artesania'}
         </Text>
@@ -265,6 +367,25 @@ export default function CrudScreen() {
             value={form.categoria}
             onChangeText={(value) => updateField('categoria', value)}
           />
+        </View>
+
+        <View style={styles.imagePanel}>
+          <Text style={styles.fieldLabel}>Imagen del producto</Text>
+          <Pressable style={styles.uploadButton} onPress={pickImage}>
+            <Text style={styles.uploadButtonText}>
+              {previewImage ? 'Cambiar imagen' : 'Subir imagen'}
+            </Text>
+          </Pressable>
+
+          {previewImage ? (
+            <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.previewPlaceholder}>
+              <Text style={styles.previewPlaceholderText}>
+                La imagen se cargara aqui despues de seleccionarla.
+              </Text>
+            </View>
+          )}
         </View>
 
         <ScrollView
@@ -340,31 +461,49 @@ export default function CrudScreen() {
           <View style={styles.cardList}>
             {filteredItems.map((item) => (
               <View key={item.id} style={styles.itemCard}>
-                <View style={styles.itemTopRow}>
-                  <View style={styles.itemBadge}>
-                    <Text style={styles.itemBadgeText}>{item.categoria}</Text>
+                <View style={styles.itemCardContent}>
+                  <View style={styles.itemInfoColumn}>
+                    <View style={styles.itemTopRow}>
+                      <View style={styles.itemBadge}>
+                        <Text style={styles.itemBadgeText}>{item.categoria}</Text>
+                      </View>
+                      <Text style={styles.itemPrice}>{formatCurrency(Number(item.precio))}</Text>
+                    </View>
+
+                    <Text style={styles.itemTitle}>{item.nombre}</Text>
+                    <Text style={styles.itemAuthor}>Por {item.artesana}</Text>
+
+                    <View style={styles.itemActions}>
+                      <Pressable style={styles.editButton} onPress={() => startEdit(item)}>
+                        <Text style={styles.editButtonText}>Editar</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[
+                          styles.deleteButton,
+                          deletingId === item.id && styles.buttonDisabled,
+                        ]}
+                        disabled={deletingId === item.id}
+                        onPress={() => confirmDelete(item.id)}>
+                        <Text style={styles.deleteButtonText}>
+                          {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                        </Text>
+                      </Pressable>
+                    </View>
                   </View>
-                  <Text style={styles.itemPrice}>{formatCurrency(Number(item.precio))}</Text>
-                </View>
 
-                <Text style={styles.itemTitle}>{item.nombre}</Text>
-                <Text style={styles.itemAuthor}>Por {item.artesana}</Text>
-
-                <View style={styles.itemActions}>
-                  <Pressable style={styles.editButton} onPress={() => startEdit(item)}>
-                    <Text style={styles.editButtonText}>Editar</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.deleteButton,
-                      deletingId === item.id && styles.buttonDisabled,
-                    ]}
-                    disabled={deletingId === item.id}
-                    onPress={() => confirmDelete(item.id)}>
-                    <Text style={styles.deleteButtonText}>
-                      {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
-                    </Text>
-                  </Pressable>
+                  <View style={styles.itemImageColumn}>
+                    {item.imagen_url ? (
+                      <Image
+                        source={{ uri: item.imagen_url }}
+                        style={styles.itemImage}
+                        resizeMode="contain"
+                      />
+                    ) : (
+                      <View style={styles.itemImagePlaceholder}>
+                        <Text style={styles.itemImagePlaceholderText}>Sin imagen</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </View>
             ))}
@@ -507,6 +646,39 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
+  imagePanel: {
+    gap: 10,
+  },
+  uploadButton: {
+    backgroundColor: '#1F3B2C',
+    borderRadius: 16,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  uploadButtonText: {
+    color: '#FFF8EE',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  previewImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 18,
+    backgroundColor: '#E7D6BF',
+  },
+  previewPlaceholder: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#C89C6D',
+    padding: 24,
+    backgroundColor: '#F8EAD7',
+  },
+  previewPlaceholderText: {
+    color: '#6A4A2C',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
   categoryRow: {
     gap: 10,
   },
@@ -614,7 +786,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8EAD7',
     borderRadius: 20,
     padding: 16,
+  },
+  itemCardContent: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'stretch',
+  },
+  itemInfoColumn: {
+    flex: 1,
     gap: 10,
+    justifyContent: 'space-between',
+  },
+  itemImageColumn: {
+    width: 122,
+    minHeight: 140,
+  },
+  itemImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    minHeight: 140,
+    borderRadius: 12,
+    backgroundColor: '#EAD7BC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
+  },
+  itemImagePlaceholderText: {
+    color: '#7B624A',
+    fontWeight: '700',
+  },
+  itemImage: {
+    width: '100%',
+    height: '100%',
+    minHeight: 140,
+    borderRadius: 12,
+    backgroundColor: '#FFF4E1',
   },
   itemTopRow: {
     flexDirection: 'row',
@@ -640,7 +846,7 @@ const styles = StyleSheet.create({
   },
   itemTitle: {
     color: '#2B2118',
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '800',
   },
   itemAuthor: {

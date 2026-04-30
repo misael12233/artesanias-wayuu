@@ -4,6 +4,7 @@ export type Artesania = {
   artesana: string;
   precio: number;
   categoria: string;
+  imagen_url?: string;
   created_at?: string;
 };
 
@@ -12,4 +13,5 @@ export type ArtesaniaPayload = {
   artesana: string;
   precio: string;
   categoria: string;
+  imagen_url: string;
 };
