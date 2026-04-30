@@ -55,7 +55,7 @@ export default function CrudScreen() {
     }
 
     return items.filter((item) =>
-      [item.nombre, item.artesana, item.categoria].some((value) =>
+      [String(item.id), item.nombre, item.artesana, item.categoria].some((value) =>
         value.toLowerCase().includes(term)
       )
     );
@@ -378,7 +378,16 @@ export default function CrudScreen() {
           </Pressable>
 
           {previewImage ? (
-            <Image source={{ uri: previewImage }} style={styles.previewImage} resizeMode="cover" />
+            <View style={styles.previewGallery}>
+              <View style={styles.previewThumbCard}>
+                <Text style={styles.previewCardLabel}>Vista previa</Text>
+                <Image
+                  source={{ uri: previewImage }}
+                  style={styles.previewThumbImage}
+                  resizeMode="cover"
+                />
+              </View>
+            </View>
           ) : (
             <View style={styles.previewPlaceholder}>
               <Text style={styles.previewPlaceholderText}>
@@ -440,7 +449,7 @@ export default function CrudScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Buscar por nombre, artesana o categoria"
+          placeholder="Buscar por id, nombre, artesana o categoria"
           placeholderTextColor="#98785B"
           style={styles.searchInput}
         />
@@ -464,8 +473,13 @@ export default function CrudScreen() {
                 <View style={styles.itemCardContent}>
                   <View style={styles.itemInfoColumn}>
                     <View style={styles.itemTopRow}>
-                      <View style={styles.itemBadge}>
-                        <Text style={styles.itemBadgeText}>{item.categoria}</Text>
+                      <View style={styles.itemMetaGroup}>
+                        <View style={styles.itemIdBadge}>
+                          <Text style={styles.itemIdBadgeText}>ID {item.id}</Text>
+                        </View>
+                        <View style={styles.itemBadge}>
+                          <Text style={styles.itemBadgeText}>{item.categoria}</Text>
+                        </View>
                       </View>
                       <Text style={styles.itemPrice}>{formatCurrency(Number(item.precio))}</Text>
                     </View>
@@ -666,6 +680,29 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: '#E7D6BF',
   },
+  previewGallery: {
+    gap: 12,
+  },
+  previewThumbCard: {
+    width: 156,
+    padding: 12,
+    borderRadius: 18,
+    backgroundColor: '#F8EAD7',
+    borderWidth: 1,
+    borderColor: '#E0C09A',
+    gap: 8,
+  },
+  previewCardLabel: {
+    color: '#6A4A2C',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  previewThumbImage: {
+    width: '100%',
+    height: 118,
+    borderRadius: 14,
+    backgroundColor: '#E7D6BF',
+  },
   previewPlaceholder: {
     borderRadius: 18,
     borderWidth: 1,
@@ -827,6 +864,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
+  },
+  itemMetaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    flex: 1,
+  },
+  itemIdBadge: {
+    backgroundColor: '#E7D6BF',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  itemIdBadgeText: {
+    color: '#6A4A2C',
+    fontSize: 12,
+    fontWeight: '800',
   },
   itemBadge: {
     backgroundColor: '#1F3B2C',
